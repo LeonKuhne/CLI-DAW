@@ -32,6 +32,7 @@ Colors = {
     'default': Color(curses.COLOR_WHITE, curses.COLOR_BLACK),
     'muted': Color(curses.COLOR_RED, curses.COLOR_BLACK),
     'highlight': Color(curses.COLOR_GREEN, curses.COLOR_BLACK),
+    'border': Color(curses.COLOR_MAGENTA, curses.COLOR_BLACK),
 }
 
 class Daw:
@@ -47,6 +48,7 @@ class Daw:
         self.reset_screen()
 
     def add_instrument(self, instrument):
+        instrument.draw_to_screen(self.screen)
         self.instruments.append(instrument)
 
     def next_state(self):
@@ -58,36 +60,13 @@ class Daw:
         # draw instruments
         for idx in range(0, len(self.instruments)):
             instrument = self.instruments[idx] 
-            sequencer = instrument.seq
-            spacing = sequencer.height
+            spacing = instrument.seq.height
             sequencer_line = 1+idx*spacing
-
-            if instrument.muted:
-                self.screen.addstr(sequencer_line, 0, str(sequencer), curses.A_DIM)
-            else:
-                self.screen.addstr(sequencer_line, 0, str(sequencer), Colors['default'].color())
+            is_selected = idx == self.selected_instrument_idx
+            selected_pos = self.selected_note_idx if is_selected else None
+            
+            instrument.draw(0, sequencer_line, selected_pos, Colors)
           
-            if not idx == self.selected_instrument_idx:
-                if instrument.muted:
-                    self.screen.addstr(sequencer_line, 3, f"[ {idx}. {instrument.sample} ]", Colors['muted'].color())
-                else:
-                    self.screen.addstr(sequencer_line, 3, f"[ {idx}. {instrument.sample} ]")
-            else:
-                sequence = sequencer.sequence
-                note_idx = self.selected_note_idx % len(sequence)
-                selected_note = sequence[note_idx]
-                
-                # highlight navigation
-                
-                # vertical
-                if instrument.muted:
-                    self.screen.addstr(sequencer_line, 3, f"[ {idx}. {instrument.sample} ]", Colors['muted'].inverse())
-                else:
-                    self.screen.addstr(sequencer_line, 3, f"[ {idx}. {instrument.sample} ]", Colors['highlight'].inverse())
-                
-                # horizontal
-                self.screen.addstr(sequencer_line + sequencer.draw_line, 1+note_idx*sequencer.note_width, selected_note * sequencer.note_width, Colors['highlight'].inverse())        
-        
         self.screen.refresh()
         
     def play_state(self):
@@ -137,19 +116,18 @@ class Daw:
                 
                 if len(self.tempo_tap_times) > 2:
                     tempo_tap_diffs = [stop-start for start, stop in zip(self.tempo_tap_times[:-1], self.tempo_tap_times[1:])]
-                    avg_tempo = sum(tempo_tap_diffs) / len(tempo_tap_diffs)
                    
-                    # try the median tempo
+                    # TODO filter out values outside of standard deviation
+
+                    # use the median tempo
                     tempo_tap_diffs.sort()
                     median_tempo = tempo_tap_diffs[len(tempo_tap_diffs) // 2]
-                    
-                    # TODO test
                     target_tempo = median_tempo
 
                     # update the tempo
                     if len(self.tempo_tap_times) >= MIN_TEMPO_TAPS:
                         if target_tempo < 60 / MIN_BPM:
-                            self.tempo = int(60 / target_tempo * 100) / 100
+                            self.tempo = target_tempo
                             self.info(f"tempo set to {self.tempo}")
             # reset tempo
             if key == 'T':
@@ -288,7 +266,7 @@ class Daw:
 
 if __name__ == '__main__':
     kick = Instrument('samples/kick.wav')
-    kick.set_rhythm("𝅘𝅥     𝅘𝅥     𝅘𝅥     𝅘𝅥               𝅘𝅥     𝅘𝅥   𝅘𝅥   𝅘𝅥 𝅘𝅥            ")
+    kick.set_rhythm("𝅘𝅥     𝅘𝅥     𝅘𝅥     𝅘𝅥")
 
     snare = Instrument('samples/snare.wav')
     snare.set_rhythm("        𝅘𝅥       "*2)
