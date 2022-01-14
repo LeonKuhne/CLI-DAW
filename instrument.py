@@ -25,22 +25,26 @@ class Sequencer:
         self.time_indicators = "|   -   ǂ   -   ǁ   -   ǂ   -   "
         self.height = 6 # the number of lines tall when drawn
         self.draw_line = 2 # the line number index with drawable notes
-        
+        self.note_width = 3 # the width of each note
+
         self.position = 0
         self.reset()
         
     def __str__(self):
         measures = self.get_measures()
         notes = self.get_notes()
-        time_markers = ''.join([str(n).ljust(int(DIVISIONS/4), ' ') for n in range(1, measures*4+1)])
-        tick_mark = (' ' * self.position + '*').ljust(notes, ' ')
+        scaled_sequence = ''.join([(' ' if note == ' ' else '█') * self.note_width for note in list(self.sequence.ljust(notes))])
+        tick_mark = ((' ' * (self.note_width//2) + '*').ljust(self.note_width) * self.position).ljust(notes*self.note_width, ' ')
+        time_indicators = (' ' * (self.note_width-1)).join(list(self.time_indicators)) + ' ' * (self.note_width-1)
+        time_markers = ''.join([str(n).ljust(int(DIVISIONS/4 * self.note_width), ' ') for n in range(1, measures*4+1)])
+
         return f"""\
-⌟{'—' * notes}⌞
+⌟{'—' * notes * self.note_width}⌞
 |{tick_mark}|
-|{self.sequence.ljust(notes, ' ')}|
-|{self.time_indicators * measures}|
+|{scaled_sequence}|
+|{time_indicators * measures}|
 |{time_markers}|
-⌝{'—' * notes}⌜\
+⌝{'—' * notes * self.note_width}⌜\
 """
     
     def set_pos(self, pos):
@@ -86,5 +90,5 @@ class Sequencer:
         self.__dict__.update(state)
 
 if __name__ == '__main__':
-    kick = Instrument('kick.wav')
+    kick = Instrument('samples/kick.wav')
     kick.set_rhythm("𝅘𝅥     𝅘𝅥     𝅘𝅥     𝅘𝅥               𝅘𝅥     𝅘𝅥   𝅘𝅥   𝅘𝅥 𝅘𝅥            ")

@@ -5,7 +5,6 @@
 import time
 import curses
 from threading import Thread
-from colorama import Fore, Back, Style
 from instrument import Instrument, Sequencer, DIVISIONS
 import pickle
 import re
@@ -13,9 +12,30 @@ import re
 MIN_BPM = 30
 MAX_BPM = 420
 MIN_TEMPO_TAPS = 8
+
+COLOR_COUNT = 0
+class Color:
+    def __init__(self, foreground, background):
+        global COLOR_COUNT
+        COLOR_COUNT += 2
+        self.id = COLOR_COUNT
+        self.foreground = foreground
+        self.background = background
+
+    def color(self):
+        return curses.color_pair(self.id)
+    
+    def inverse(self):
+        return curses.color_pair(self.id+1)
+
+Colors = {
+    'default': Color(curses.COLOR_WHITE, curses.COLOR_BLACK),
+    'muted': Color(curses.COLOR_RED, curses.COLOR_BLACK),
+    'highlight': Color(curses.COLOR_GREEN, curses.COLOR_BLACK),
+}
+
 class Daw:
     def __init__(self):
-        self.info = ""
         self.tempo_tap_times = []
         self.selected_instrument_idx = 0
         self.selected_note_idx = 0
@@ -30,9 +50,9 @@ class Daw:
         self.instruments.append(instrument)
 
     def next_state(self):
-        self.tick += 1
         for i in self.instruments:
             i.seq.set_pos(self.tick)
+        self.tick += 1
 
     def draw_state(self):
         # draw instruments
@@ -40,26 +60,33 @@ class Daw:
             instrument = self.instruments[idx] 
             sequencer = instrument.seq
             spacing = sequencer.height
+            sequencer_line = 1+idx*spacing
 
-            if not instrument.muted:
-                self.screen.addstr(idx * spacing+1, 0, str(sequencer))
+            if instrument.muted:
+                self.screen.addstr(sequencer_line, 0, str(sequencer), curses.A_DIM)
             else:
-                # indicate muted
-                self.screen.addstr(idx * spacing+1, 0, str(sequencer), curses.A_DIM)
-            
+                self.screen.addstr(sequencer_line, 0, str(sequencer), Colors['default'].color())
+          
             if not idx == self.selected_instrument_idx:
-                self.screen.addstr(idx * spacing+1, 3, f"[ {idx}. {instrument.sample} ]")
+                if instrument.muted:
+                    self.screen.addstr(sequencer_line, 3, f"[ {idx}. {instrument.sample} ]", Colors['muted'].color())
+                else:
+                    self.screen.addstr(sequencer_line, 3, f"[ {idx}. {instrument.sample} ]")
             else:
                 sequence = sequencer.sequence
-                note_spacing = sequencer.draw_line
                 note_idx = self.selected_note_idx % len(sequence)
                 selected_note = sequence[note_idx]
                 
                 # highlight navigation
-                self.screen.addstr(idx * spacing+1, 3, f"[ {idx}. {instrument.sample} ]", curses.A_REVERSE)
-                self.screen.addstr(idx * spacing+1 + note_spacing, note_idx+1, selected_note, curses.A_REVERSE)
-        
-        self.screen.addstr(0, 0, self.info, curses.A_REVERSE)
+                
+                # vertical
+                if instrument.muted:
+                    self.screen.addstr(sequencer_line, 3, f"[ {idx}. {instrument.sample} ]", Colors['muted'].inverse())
+                else:
+                    self.screen.addstr(sequencer_line, 3, f"[ {idx}. {instrument.sample} ]", Colors['highlight'].inverse())
+                
+                # horizontal
+                self.screen.addstr(sequencer_line + sequencer.draw_line, 1+note_idx*sequencer.note_width, selected_note * sequencer.note_width, Colors['highlight'].inverse())        
         
         self.screen.refresh()
         
@@ -111,16 +138,23 @@ class Daw:
                 if len(self.tempo_tap_times) > 2:
                     tempo_tap_diffs = [stop-start for start, stop in zip(self.tempo_tap_times[:-1], self.tempo_tap_times[1:])]
                     avg_tempo = sum(tempo_tap_diffs) / len(tempo_tap_diffs)
+                   
+                    # try the median tempo
+                    tempo_tap_diffs.sort()
+                    median_tempo = tempo_tap_diffs[len(tempo_tap_diffs) // 2]
+                    
+                    # TODO test
+                    target_tempo = median_tempo
 
                     # update the tempo
                     if len(self.tempo_tap_times) >= MIN_TEMPO_TAPS:
-                        if avg_tempo < 60 / MIN_BPM:
-                            self.tempo = int(60 / avg_tempo * 100) / 100
-                            self.info = f"tempo set to {self.tempo}"
+                        if target_tempo < 60 / MIN_BPM:
+                            self.tempo = int(60 / target_tempo * 100) / 100
+                            self.info(f"tempo set to {self.tempo}")
             # reset tempo
             if key == 'T':
                 self.tempo_tap_times = []
-                self.info = f"tempo taps cleared"
+                self.info(f"tempo taps cleared")
             # reset playhead
             if key == 'r':
                 self.tick = 0
@@ -186,6 +220,13 @@ class Daw:
 
     def reset_screen(self):
         self.screen = curses.initscr()
+       
+        # load colors
+        curses.start_color()
+        for color in Colors.values():
+            curses.init_pair(color.id, color.foreground, color.background)
+            curses.init_pair(color.id+1, color.background, color.foreground)
+
         self.screen.clear()
         self.draw_state()
 
@@ -193,27 +234,48 @@ class Daw:
     # Project Management
 
     def prompt(self, text):
-        self.screen.addstr(0, 0, text)
+        self.info(text)
 
         response = ""
-        key = self.screen.getkey()
+        key = ""
         while not (key == '\n' and len(response) > 0):
             key = self.screen.getkey()
-            if re.match(r'[a-zA-Z -_]', key):
-                response += key
+            
+            if key == '\n': # submit on empty
+                break
+            if key == '\x7f': # support delete
+                response = response[:-1]
+            else:
+                # sanitize 
+                if key == ' ':
+                    key = '_'
+                # validate 
+                if re.match(r'[a-zA-Z-_]', key):
+                    response += key
+            
+            self.info(text + response)
         
-        self.screen.clear()
         return response
 
     def save(self):
         project_name = self.prompt('save as ') 
+        if not project_name:
+            self.info("project not saved")
+            return
+
         with open(f"{project_name}.proj", 'wb') as f:
             pickle.dump(self, f)
+        self.info(f"saved as '{project_name}.proj'")
 
     def load(self):
         project_name = self.prompt('load project ')
         with open(f"{project_name}.proj", 'rb') as f:
             return pickle.load(f)
+
+    def info(self, text):
+        info_width = 48
+        self.screen.addstr(0, 0, ' ' * info_width) # clear
+        self.screen.addstr(0, 0, text, curses.A_REVERSE) # print
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -225,16 +287,16 @@ class Daw:
         self.reset_screen()
 
 if __name__ == '__main__':
-    kick = Instrument('kick.wav')
+    kick = Instrument('samples/kick.wav')
     kick.set_rhythm("𝅘𝅥     𝅘𝅥     𝅘𝅥     𝅘𝅥               𝅘𝅥     𝅘𝅥   𝅘𝅥   𝅘𝅥 𝅘𝅥            ")
 
-    snare = Instrument('snare.wav')
+    snare = Instrument('samples/snare.wav')
     snare.set_rhythm("        𝅘𝅥       "*2)
 
-    hat = Instrument('hat.wav')
+    hat = Instrument('samples/hat.wav')
     hat.set_rhythm("𝅘𝅥 "*16)
     
-    ohat = Instrument('oh.wav')
+    ohat = Instrument('samples/oh.wav')
     ohat.set_rhythm("    𝅘𝅥   "*4)
    
     daw = Daw()
