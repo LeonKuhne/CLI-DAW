@@ -60,7 +60,7 @@ class Daw:
         # draw instruments
         for idx in range(0, len(self.instruments)):
             instrument = self.instruments[idx] 
-            spacing = instrument.seq.height
+            spacing = instrument.height()+3
             sequencer_line = 1+idx*spacing
             is_selected = idx == self.selected_instrument_idx
             selected_pos = self.selected_note_idx if is_selected else None
@@ -115,19 +115,19 @@ class Daw:
                 self.tempo_tap_times.append(time.time())
                 
                 if len(self.tempo_tap_times) > 2:
-                    tempo_tap_diffs = [stop-start for start, stop in zip(self.tempo_tap_times[:-1], self.tempo_tap_times[1:])]
+                    tempo_tap_deltas = [stop-start for start, stop in zip(self.tempo_tap_times[:-1], self.tempo_tap_times[1:])]
                    
-                    # TODO filter out values outside of standard deviation
-
-                    # use the median tempo
-                    tempo_tap_diffs.sort()
-                    median_tempo = tempo_tap_diffs[len(tempo_tap_diffs) // 2]
-                    target_tempo = median_tempo
-
                     # update the tempo
                     if len(self.tempo_tap_times) >= MIN_TEMPO_TAPS:
-                        if target_tempo < 60 / MIN_BPM:
-                            self.tempo = target_tempo
+
+                        # use the median tempo
+                        # TODO filter out values outside of standard deviation
+                        tempo_tap_deltas.sort()
+                        median_delta = tempo_tap_deltas[len(tempo_tap_deltas) // 2]
+                        target_delta = median_delta
+
+                        if target_delta < 60 / MIN_BPM:
+                            self.tempo = 60/target_delta # delta to bpm
                             self.info(f"tempo set to {self.tempo}")
             # reset tempo
             if key == 'T':
