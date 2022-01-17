@@ -9,7 +9,7 @@ import pickle
 import re
 from instrument import Instrument, Sequencer, DIVISIONS
 from tempo import Tempo
-from bind import Bind
+from controls import Controls
 
 COLOR_COUNT = 0
 class Color:
@@ -56,7 +56,7 @@ class Daw:
         # draw instruments
         for idx in range(0, len(self.instruments)):
             instrument = self.instruments[idx] 
-            spacing = instrument.height()
+            spacing = instrument.height() + 1
             sequencer_line = 1+idx*spacing
             is_selected = idx == self.selected_instrument_idx
             selected_pos = self.selected_note_idx if is_selected else None
@@ -207,6 +207,6 @@ if __name__ == '__main__':
     daw.add_instrument(hat)
     daw.add_instrument(ohat)
 
-    controls = Bind(daw)
+    controls = Controls(daw)
     controls.listen()
 

@@ -64,7 +64,7 @@ class Instrument:
 
 class Sequencer:
     def __init__(self):
-        self.note_width = 3 # the width of each note
+        self.note_width = 2 # the width of each note
         self.position = 0
         self.draw_order = [
             self.draw_pattern,

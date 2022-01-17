@@ -1,4 +1,4 @@
-class Bind:
+class Controls:
     def __init__(self, daw):
         self.daw = daw
         self.listening = False
