@@ -5,33 +5,11 @@
 import time
 import curses
 from threading import Thread
-import pickle
-import re
-from instrument import Instrument, Sequencer, DIVISIONS
+from instrument import Instrument
+from sequencer import DIVISIONS
 from tempo import Tempo
 from controls import Controls
-
-COLOR_COUNT = 0
-class Color:
-    def __init__(self, foreground, background):
-        global COLOR_COUNT
-        COLOR_COUNT += 2
-        self.id = COLOR_COUNT
-        self.foreground = foreground
-        self.background = background
-
-    def color(self):
-        return curses.color_pair(self.id)
-    
-    def inverse(self):
-        return curses.color_pair(self.id+1)
-
-Colors = {
-    'default': Color(curses.COLOR_WHITE, curses.COLOR_BLACK),
-    'muted': Color(curses.COLOR_RED, curses.COLOR_BLACK),
-    'highlight': Color(curses.COLOR_GREEN, curses.COLOR_BLACK),
-    'border': Color(curses.COLOR_MAGENTA, curses.COLOR_BLACK),
-}
+from color import Colors
 
 class Daw:
     def __init__(self):
@@ -61,7 +39,7 @@ class Daw:
             is_selected = idx == self.selected_instrument_idx
             selected_pos = self.selected_note_idx if is_selected else None
             
-            instrument.draw(0, sequencer_line, selected_pos, Colors)
+            instrument.draw(0, sequencer_line, selected_pos)
           
         self.screen.refresh()
         
@@ -123,62 +101,19 @@ class Daw:
             curses.init_pair(color.id, color.foreground, color.background)
             curses.init_pair(color.id+1, color.background, color.foreground)
 
+        # load instruments
+        for i in self.instruments:
+            i.draw_to_screen(self.screen)
+
         self.screen.clear()
         self.draw_state()
-
-    #
-    # Project Management
-
-    def prompt(self, text):
-        self.info(text)
-
-        response = ""
-        key = ""
-        while not (key == '\n' and len(response) > 0):
-            key = self.screen.getkey()
-            
-            if key == '\n': # submit on empty
-                break
-            if key == '\x7f': # support delete
-                response = response[:-1]
-            else:
-                # sanitize 
-                if key == ' ':
-                    key = '_'
-                # validate 
-                if re.match(r'[a-zA-Z-_]', key):
-                    response += key
-            
-            self.info(text + response)
-        
-        return response
-
-    def save(self):
-        project_name = self.prompt('save as ') 
-        if not project_name:
-            self.info("project not saved")
-            return
-
-        with open(f"{project_name}.proj", 'wb') as f:
-            pickle.dump(self, f)
-        self.info(f"saved as '{project_name}.proj'")
-
-    def load(self):
-        project_name = self.prompt('load project ')
-        
-        if not project_name:
-            self.info("no project loaded")
-            return
-        
-        with open(f"{project_name}.proj", 'rb') as f:
-            return pickle.load(f)
-        self.info(f"loaded '{project_name}.proj'")
 
     def info(self, text):
         info_width = 48
         self.screen.addstr(0, 0, ' ' * info_width, Colors['default'].color()) # clear
         self.screen.addstr(0, 0, text, Colors['default'].inverse()) # print
 
+    # for pickling
     def __getstate__(self):
         state = self.__dict__.copy()
         del state['screen']
@@ -187,26 +122,3 @@ class Daw:
     def __setstate__(self, state):
         self.__dict__.update(state)
         self.reset_screen()
-
-if __name__ == '__main__':
-    kick = Instrument('samples/kick.wav')
-    kick.set_rhythm("𝅘𝅥     𝅘𝅥     𝅘𝅥     𝅘𝅥")
-
-    snare = Instrument('samples/snare.wav')
-    snare.set_rhythm("        𝅘𝅥       "*2)
-
-    hat = Instrument('samples/hat.wav')
-    hat.set_rhythm("𝅘𝅥 "*16)
-    
-    ohat = Instrument('samples/oh.wav')
-    ohat.set_rhythm("    𝅘𝅥   "*4)
-   
-    daw = Daw()
-    daw.add_instrument(kick)
-    daw.add_instrument(snare)
-    daw.add_instrument(hat)
-    daw.add_instrument(ohat)
-
-    controls = Controls(daw)
-    controls.listen()
-

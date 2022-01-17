@@ -1,6 +1,10 @@
+import pickle
+import re
+
 class Controls:
-    def __init__(self, daw):
+    def __init__(self, daw, info=lambda _: None):
         self.daw = daw
+        self.info = daw.info # TODO create a display class and pass that instead
         self.listening = False
 
         self.bindings = {
@@ -13,9 +17,9 @@ class Controls:
             'c': self.daw.screen.clear, # clean screen
             
             # manage projects
-            'f': self.daw.load, # open project file
+            'f': self.load_project, # open project file
             'q': lambda: self.quit(True), # save and quit
-            'Q': self.quit, # quit
+            'Q': self.quit, # force quit
             
             # select instrument
             'j': self.daw.next_instrument,
@@ -48,11 +52,57 @@ class Controls:
             if key in self.bindings:
                 self.bindings[key]()
             else:
-                self.daw.info(f"Unknown binding: {key}")
+                self.info(f"Unknown binding: {key}")
+
+    def prompt(self, text):
+        self.info(text)
+
+        response = ""
+        key = ""
+        while not (key == '\n' and len(response) > 0):
+            key = self.daw.screen.getkey()
+            
+            if key == '\n': # submit on empty
+                break
+            if key == '\x7f': # support delete
+                response = response[:-1]
+            else:
+                # sanitize 
+                if key == ' ':
+                    key = '_'
+                # validate 
+                if re.match(r'[a-zA-Z-_]', key):
+                    response += key
+            
+            self.info(text + response)
+        
+        return response
+
+    def save_project(self):
+        project_name = self.prompt('save as ') 
+        if not project_name:
+            self.info("project not saved")
+            return
+
+        with open(f"{project_name}.proj", 'wb') as f:
+            pickle.dump(self.daw, f)
+        self.info(f"saved as '{project_name}.proj'")
+
+    def load_project(self):
+        project_name = self.prompt('load project ')
+        
+        if not project_name:
+            self.info("no project loaded")
+            return
+        
+        with open(f"{project_name}.proj", 'rb') as f:
+            self.daw = pickle.load(f) # TODO navigation doesn't work on load
+        self.info(f"loaded '{project_name}.proj'")
 
     def quit(self, save=False):
        self.daw.playing = False
        self.listening = False
 
        if save:
-           self.daw.save()
+           self.save_project()
+
