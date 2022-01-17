@@ -5,13 +5,10 @@
 import time
 import curses
 from threading import Thread
-from instrument import Instrument, Sequencer, DIVISIONS
 import pickle
 import re
-
-MIN_BPM = 30
-MAX_BPM = 420
-MIN_TEMPO_TAPS = 8
+from instrument import Instrument, Sequencer, DIVISIONS
+from tempo import Tempo
 
 COLOR_COUNT = 0
 class Color:
@@ -37,12 +34,11 @@ Colors = {
 
 class Daw:
     def __init__(self):
-        self.tempo_tap_times = []
         self.selected_instrument_idx = 0
         self.selected_note_idx = 0
         self.instruments = []
         self.tick = 0
-        self.tempo = 120
+        self.tempo = Tempo(120, self.info)
         self.playing = False
         self.listening = False
         self.reset_screen()
@@ -60,7 +56,7 @@ class Daw:
         # draw instruments
         for idx in range(0, len(self.instruments)):
             instrument = self.instruments[idx] 
-            spacing = instrument.height()+3
+            spacing = instrument.height()
             sequencer_line = 1+idx*spacing
             is_selected = idx == self.selected_instrument_idx
             selected_pos = self.selected_note_idx if is_selected else None
@@ -84,11 +80,16 @@ class Daw:
             self.draw_state()
             self.play_state()
 
-            delta = 60/self.tempo * 4/DIVISIONS
+            # calculate timing
+            delta = 60/self.tempo.bpm * 4/DIVISIONS
             now = time.time()
-            since_last = (now - last) / 1000
-            last = now
-            time.sleep(delta - since_last)
+            since_last = (now - last)
+            delay = delta - since_last
+            
+            # increment timing
+            last += delta
+            if delay > 0:
+                time.sleep(delay)
 
     # listen for keyboard input
     def listen(self):
@@ -111,27 +112,10 @@ class Daw:
                 self.selected_instrument().toggle_mute()
             # tempo
             if key == 't':
-                # mark the time
-                self.tempo_tap_times.append(time.time())
-                
-                if len(self.tempo_tap_times) > 2:
-                    tempo_tap_deltas = [stop-start for start, stop in zip(self.tempo_tap_times[:-1], self.tempo_tap_times[1:])]
-                   
-                    # update the tempo
-                    if len(self.tempo_tap_times) >= MIN_TEMPO_TAPS:
-
-                        # use the median tempo
-                        # TODO filter out values outside of standard deviation
-                        tempo_tap_deltas.sort()
-                        median_delta = tempo_tap_deltas[len(tempo_tap_deltas) // 2]
-                        target_delta = median_delta
-
-                        if target_delta < 60 / MIN_BPM:
-                            self.tempo = 60/target_delta # delta to bpm
-                            self.info(f"tempo set to {self.tempo}")
+                self.tempo.tap()
             # reset tempo
             if key == 'T':
-                self.tempo_tap_times = []
+                self.tempo.reset()
                 self.info(f"tempo taps cleared")
             # reset playhead
             if key == 'r':
@@ -142,12 +126,13 @@ class Daw:
             # clean screen
             if key == 'c':
                 self.screen.clear()
-            # save 
+            # save and quit
             if key == 'q':
                 self.save()
-            # save and quit
+                self.playing = False
+                self.listening = False
+            # quit
             if key == 'Q':
-                self.save()
                 self.playing = False
                 self.listening = False
             # open project file
