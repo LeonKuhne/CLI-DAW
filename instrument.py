@@ -148,6 +148,7 @@ class Sequencer:
     def shorten(self):
         if len(self.pattern) > DIVISIONS:
             self.pattern = self.pattern[:len(self.pattern) - DIVISIONS]
+            self.screen.clear() # WEIRD
 
     def reset(self):
         self.pattern = " " * DIVISIONS

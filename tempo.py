@@ -6,11 +6,12 @@ MIN_TEMPO_TAPS = 4 # how many taps are needed (within 2 stdev) to calc tempo
 class Tempo:
     def __init__(self, bpm, info=lambda _: None):
         self.bpm = bpm
-        self.reset()
         self.info = info
+        self.tap_times = []
 
     def reset(self):
         self.tap_times = []
+        self.info(f"tempo taps cleared")
     
     def tap(self):
         # mark the time

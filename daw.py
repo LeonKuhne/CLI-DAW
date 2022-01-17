@@ -9,6 +9,7 @@ import pickle
 import re
 from instrument import Instrument, Sequencer, DIVISIONS
 from tempo import Tempo
+from bind import Bind
 
 COLOR_COUNT = 0
 class Color:
@@ -40,7 +41,6 @@ class Daw:
         self.tick = 0
         self.tempo = Tempo(120, self.info)
         self.playing = False
-        self.listening = False
         self.reset_screen()
 
     def add_instrument(self, instrument):
@@ -91,92 +91,25 @@ class Daw:
             if delay > 0:
                 time.sleep(delay)
 
-    # listen for keyboard input
-    def listen(self):
-        self.listening = True
-        while self.listening:
-            self.draw_state()
-            key = self.screen.getkey()
+    def toggle_play(self):
+        if self.playing:
+            self.playing = False
+        else:
+            self.play()
 
-            #
-            # CONTROL
+    def next_instrument(self):
+        self.selected_instrument_idx = (self.selected_instrument_idx + 1) % len(self.instruments)
 
-            # play/pause
-            if key == ' ':
-                if self.playing:
-                    self.playing = False
-                else:
-                    self.play()
-            # toggle mute
-            if key == 'm':
-                self.selected_instrument().toggle_mute()
-            # tempo
-            if key == 't':
-                self.tempo.tap()
-            # reset tempo
-            if key == 'T':
-                self.tempo.reset()
-                self.info(f"tempo taps cleared")
-            # reset playhead
-            if key == 'r':
-                self.tick = 0
-                for i in self.instruments:
-                    i.seq.set_pos(0)
-                self.screen.clear()
-            # clean screen
-            if key == 'c':
-                self.screen.clear()
-            # save and quit
-            if key == 'q':
-                self.save()
-                self.playing = False
-                self.listening = False
-            # quit
-            if key == 'Q':
-                self.playing = False
-                self.listening = False
-            # open project file
-            if key == 'f':
-                self.load()
-                
-            #
-            # NAVIGATE
+    def prev_instrument(self):
+        self.selected_instrument_idx = (self.selected_instrument_idx - 1) % len(self.instruments)
+    
+    def move_note(self, delta):
+        self.selected_note_idx += delta
 
-            # select instrument
-            if key == 'j':
-                self.selected_instrument_idx = (self.selected_instrument_idx + 1) % len(self.instruments)
-            if key == 'k':
-                self.selected_instrument_idx = (self.selected_instrument_idx - 1) % len(self.instruments)
-            # select note
-            if key == 'h':
-                self.selected_note_idx -= 1
-            if key == 'l':
-                self.selected_note_idx += 1
-            if key == 'b':
-                self.selected_note_idx -= 4
-            if key == 'w':
-                self.selected_note_idx += 4
-
-            # 
-            # COMPOSE
-
-            # toggle note
-            if key == 'i':
-                self.selected_instrument().seq.toggle_note(self.selected_note_idx)
-            # duplicate
-            if key == 'd':
-                self.selected_instrument().seq.duplicate()
-            # extend
-            if key == 'e':
-                self.selected_instrument().seq.extend()
-            # shorten
-            if key == 's':
-                self.selected_instrument().seq.shorten()
-                self.screen.clear()
-            # reset
-            if key == 'R':
-                self.selected_instrument().seq.reset()
-                self.screen.clear()
+    def reset_playhead(self):
+        self.tick = 0
+        for i in self.instruments:
+            i.seq.set_pos(0)
    
     def selected_instrument(self):
         return self.instruments[self.selected_instrument_idx]
@@ -232,13 +165,19 @@ class Daw:
 
     def load(self):
         project_name = self.prompt('load project ')
+        
+        if not project_name:
+            self.info("no project loaded")
+            return
+        
         with open(f"{project_name}.proj", 'rb') as f:
             return pickle.load(f)
+        self.info(f"loaded '{project_name}.proj'")
 
     def info(self, text):
         info_width = 48
-        self.screen.addstr(0, 0, ' ' * info_width) # clear
-        self.screen.addstr(0, 0, text, curses.A_REVERSE) # print
+        self.screen.addstr(0, 0, ' ' * info_width, Colors['default'].color()) # clear
+        self.screen.addstr(0, 0, text, Colors['default'].inverse()) # print
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -267,5 +206,7 @@ if __name__ == '__main__':
     daw.add_instrument(snare)
     daw.add_instrument(hat)
     daw.add_instrument(ohat)
-    daw.listen()
+
+    controls = Bind(daw)
+    controls.listen()
 
